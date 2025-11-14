@@ -4,6 +4,7 @@
 #include <sys/types.h>
 
 #define PORT 8080
+#define BACKLOG 10
 
 // a struct for our server
 typedef struct server {
@@ -41,6 +42,35 @@ int server_listen(server_t *server) {
   // and sin port is the port in network and our port is defined at the top
   // (8080)
   server_addr.sin_port = htons(PORT);
+
+  // now we call bind to attach the socket to a specific address it is still
+  // closed tho because its CLOSED we give the bind funtion the file descriptor
+  // from the server struct then second we cast our server_addr struct to the
+  // sockaddr struct and lastly we give it the size of the struct we casted
+  // before
+  err = bind(server->listen_fd, (struct sockaddr *)&server_addr,
+             sizeof(server_addr));
+
+  // if the binding fails we just give error and return the error
+  if (err == -1) {
+    perror("bind");
+    printf("Failed to bind the socket to adress\n");
+    return err;
+  }
+
+  // now we will have to use listen to mark the socket as
+  // SO_ACCEPTION so that it can accept requests (socket also goes from the
+  // CLOSED state to the LISTEN state) First we have again the fd from the
+  // server Secondly we have the BACKLOG which is the queue size for how many
+  // requests can line up we define it at the top
+  err = listen(server->listen_fd, BACKLOG);
+
+  // if we have an error we do the same like always
+  if (err == -1) {
+    perror("listen");
+    printf("Failed to put socket into passive mode to listen\n");
+    return err;
+  }
 
   return 0;
 }
