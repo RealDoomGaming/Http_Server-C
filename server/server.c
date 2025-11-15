@@ -154,7 +154,7 @@ void *serverAcceptThreadFunc(void *arg) {
   for (;;) {
     err = server_accept(server);
 
-    if (err) {
+    if (err != 0) {
       printf("Failed accepting connection\n");
       pthread_exit(NULL);
     }
