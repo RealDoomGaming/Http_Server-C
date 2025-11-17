@@ -131,6 +131,16 @@ int server_accept(server_t *server) {
     return err;
   }
 
+  // before we close the socket we want to ensure that the data has atually send
+  // and we also want to tell the client that we are going to close with
+  // shutdown for shutdown we give it the fd of the client and the Shut_RDWR
+  // which tells the shutdown function to close both the reading and writing
+  // side of the socket connection
+  shutdown(conn_fd, SHUT_RDWR);
+
+  // then we have a small delay to ensure the data actually reaches the client
+  usleep(100000);
+
   // then we close the connection with conn_fd and if any error happened then
   // do error stuff
   err = close(conn_fd);
