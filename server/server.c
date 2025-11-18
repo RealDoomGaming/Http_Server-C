@@ -1,4 +1,5 @@
 // #include <bits/pthreadtypes.h>
+#include <malloc.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stddef.h>
@@ -11,6 +12,7 @@
 
 #define PORT 8080
 #define BACKLOG 10
+#define BUFFER 1024
 
 // a struct for our server
 typedef struct server {
@@ -109,14 +111,25 @@ int server_accept(server_t *server) {
   // else we print Client Connected bc we connected succesfully
   printf("Client connected!\n");
 
+  // reading client data
+  // buffer is for future use in the read function and we use malloc to give it
+  // the storage so stuff can be read into it over read
+  char *buffer = malloc(BUFFER);
+
+  // with read we get the data from the client with conn_fd since thats our
+  // clients socket and then we just give buffer in which we write the stuff we
+  // read and the buffer
+  read(conn_fd, buffer, BUFFER);
+  printf("The client data was read and is: %s\n", buffer);
+
   // now we need to send something with write
   // in the content needs to be the protocoll, the status code
-  // the content type and then after that the actual text or whatever you want
-  // to send
-  char *content = "HTTP/1.0 200 OK\r\n"
+  // the content type and then after that the actual text or whatever you
+  // want to send
+  char *content = "HTTP/1.1 200 OK\r\n"
                   "Content-Type: text/html\n"
                   "\r\n"
-                  "Ingo Bingo";
+                  "Jukulumbien";
   // size of our content
   size_t contentSize = strlen(content);
 
