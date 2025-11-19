@@ -2,6 +2,7 @@
 #include <malloc.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -119,8 +120,47 @@ int server_accept(server_t *server) {
   // with read we get the data from the client with conn_fd since thats our
   // clients socket and then we just give buffer in which we write the stuff we
   // read and the buffer
-  read(conn_fd, buffer, BUFFER);
-  printf("The client data was read and is: %s\n", buffer);
+  err = read(conn_fd, buffer, BUFFER);
+
+  // if err then we just do our usual error handeling
+  if (err <= 0) {
+    perror("read");
+    printf("failed reading from the client\n");
+    return err;
+  }
+
+  // if no error then we print it
+  printf("The client data was read and is: %s\n\n", buffer);
+
+  // read in buffer until we find a space to get the method
+  // first we get the buffer for the biggest method (Delete) + for the 0 pointer
+  size_t bufferMethodSize = 8;
+  // then we malloc the method
+  char *method = malloc(bufferMethodSize);
+  // we also need to give it a null determinator at the last idx of the method
+  method[7] = 0;
+
+  // then we do the entire logic for finding the method
+  // first we make a bool for if we have found the method
+  bool foundFirstSpace = false;
+  // then we have an idx for which char to get from the buffers
+  int idx = 0;
+  printf("%lu", strlen(buffer));
+  // then we enter our while where we check if the bool is false and then check
+  // if our idx is smaller then the length of the buffer
+  while (!foundFirstSpace && idx < strlen(buffer)) {
+    // then we copy the character from the buffer into our method
+    method[idx] = buffer[idx];
+    printf("character at idx: %d %c\n", idx, buffer[idx]);
+    // and after that check if our current char is a space
+    if (buffer[idx] == ' ') {
+      foundFirstSpace = true;
+    }
+    // lastly we make our idx + 1 and then we are done with everything
+    idx++;
+  }
+
+  printf("Found Method: %s\n", method);
 
   // now we need to send something with write
   // in the content needs to be the protocoll, the status code
