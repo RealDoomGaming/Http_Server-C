@@ -20,6 +20,93 @@ typedef struct server {
   int listen_fd;
 } server_t;
 
+// function for just sending plain text when the client has the method GET
+int sendPlainText(int conn_fd) {
+  // making a new error variable to store errors
+  int err;
+
+  // now we need to send something with write
+  // in the content needs to be the protocoll, the status code
+  // the content type and then after that the actual text or whatever you
+  // want to send
+  char *content = "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: text/html\n"
+                  "\r\n"
+                  "Jukulumbrien";
+
+  // size of our content
+  size_t contentSize = strlen(content);
+
+  // then we write it to the client with the client fd and the content and the
+  // size of the content
+  err = write(conn_fd, content, contentSize);
+
+  // if error then we do the usual stuff
+  if (err == -1) {
+    perror("write");
+    printf("failed to write to client\n");
+    return err;
+  }
+
+  // if no error then we just return 0
+  return 0;
+}
+
+char *getMethod(int conn_fd) {
+  // reading client data
+  // buffer is for future use in the read function and we use malloc to give it
+  // the storage so stuff can be read into it over read
+  char *buffer = malloc(BUFFER);
+
+  // we also need a new error variable to store the error
+  int err;
+
+  // with read we get the data from the client with conn_fd since thats our
+  // clients socket and then we just give buffer in which we write the stuff we
+  // read and the buffer
+  err = read(conn_fd, buffer, BUFFER);
+
+  // if err then we just do our usual error handeling
+  if (err <= 0) {
+    perror("read");
+    printf("failed reading from the client\n");
+    return NULL;
+  }
+
+  // if no error then we print it
+  printf("The client data was read and is: %s\n\n", buffer);
+
+  // read in buffer until we find a space to get the method
+  // first we get the buffer for the biggest method (Delete) + for the 0 pointer
+  size_t bufferMethodsize = 8;
+  // then we malloc the method
+  char *method = malloc(bufferMethodsize);
+  // we also need to give it a null determinator at the last idx of the method
+  method[7] = 0;
+
+  // then we do the entire logic for finding the method
+  // first we make a bool for if we have found the method
+  bool foundFirstSpace = false;
+  // then we have an idx for which char to get from the buffers
+  int idx = 0;
+  printf("%lu", strlen(buffer));
+  // then we enter our while where we check if the bool is false and then check
+  // if our idx is smaller then the length of the buffer
+  while (!foundFirstSpace && idx < strlen(buffer)) {
+    // then we copy the character from the buffer into our method
+    method[idx] = buffer[idx];
+    printf("character at idx: %d %c\n", idx, buffer[idx]);
+    // and after that check if our current char is a space
+    if (buffer[idx] == ' ') {
+      foundFirstSpace = true;
+    }
+    // lastly we make our idx + 1 and then we are done with everything
+    idx++;
+  }
+
+  return method;
+}
+
 // in server_listen we will listen for a connection
 int server_listen(server_t *server) {
   // listenes for a connection
@@ -113,74 +200,32 @@ int server_accept(server_t *server) {
   printf("Client connected!\n");
 
   // reading client data
-  // buffer is for future use in the read function and we use malloc to give it
-  // the storage so stuff can be read into it over read
-  char *buffer = malloc(BUFFER);
+  char *method = getMethod(conn_fd);
 
-  // with read we get the data from the client with conn_fd since thats our
-  // clients socket and then we just give buffer in which we write the stuff we
-  // read and the buffer
-  err = read(conn_fd, buffer, BUFFER);
-
-  // if err then we just do our usual error handeling
-  if (err <= 0) {
-    perror("read");
-    printf("failed reading from the client\n");
-    return err;
+  // after reading client data we check if we had an error and then
+  // do our usual error handeling stuff
+  if (method == NULL) {
+    perror("method");
+    printf("failed to get the method from the client");
+    return -1;
   }
 
-  // if no error then we print it
-  printf("The client data was read and is: %s\n\n", buffer);
-
-  // read in buffer until we find a space to get the method
-  // first we get the buffer for the biggest method (Delete) + for the 0 pointer
-  size_t bufferMethodSize = 8;
-  // then we malloc the method
-  char *method = malloc(bufferMethodSize);
-  // we also need to give it a null determinator at the last idx of the method
-  method[7] = 0;
-
-  // then we do the entire logic for finding the method
-  // first we make a bool for if we have found the method
-  bool foundFirstSpace = false;
-  // then we have an idx for which char to get from the buffers
-  int idx = 0;
-  printf("%lu", strlen(buffer));
-  // then we enter our while where we check if the bool is false and then check
-  // if our idx is smaller then the length of the buffer
-  while (!foundFirstSpace && idx < strlen(buffer)) {
-    // then we copy the character from the buffer into our method
-    method[idx] = buffer[idx];
-    printf("character at idx: %d %c\n", idx, buffer[idx]);
-    // and after that check if our current char is a space
-    if (buffer[idx] == ' ') {
-      foundFirstSpace = true;
-    }
-    // lastly we make our idx + 1 and then we are done with everything
-    idx++;
-  }
-
+  // for testing purposes we also print the method we find
   printf("Found Method: %s\n", method);
 
-  // now we need to send something with write
-  // in the content needs to be the protocoll, the status code
-  // the content type and then after that the actual text or whatever you
-  // want to send
-  char *content = "HTTP/1.1 200 OK\r\n"
-                  "Content-Type: text/html\n"
-                  "\r\n"
-                  "Jukulumbien";
-  // size of our content
-  size_t contentSize = strlen(content);
+  // after finding the method the client gave us we could use that to give a
+  // response back instead of always giving it a simple text
 
-  // then we write it to the client with the client fd and the content and the
-  // size of the content
-  err = write(conn_fd, content, contentSize);
+  // if we have the method GET we do the normal stuff where we send a plain text
+  if (strcmp(method, "GET")) {
+    err = sendPlainText(conn_fd);
+  }
 
-  // if error then we do the usual stuff
+  // after doing the specific method the client requested we can see if we got
+  // an error and then do our usual error handeling stuff
   if (err == -1) {
-    perror("write");
-    printf("failed to write to client\n");
+    perror("client");
+    printf("failed to do the method the client requested\n");
     return err;
   }
 
