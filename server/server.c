@@ -254,6 +254,11 @@ int server_accept(server_t *server) {
   return err;
 }
 
+// fix for later -> this function is currently wrong I need to make a thread
+// whenever I get the funtion server_accept then every request has its own
+// thread is better then what I am doing rn also I could make the for loop to a
+// while loop and check every few seconds if the main user (you) type in exit to
+// properly close the server if I dont find another way to do it
 void *serverAcceptThreadFunc(void *arg) {
   // comments for everything here is in the main function but commented out
   server_t *server = (server_t *)arg;
