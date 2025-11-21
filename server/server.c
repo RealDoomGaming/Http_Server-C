@@ -254,12 +254,12 @@ int server_accept(server_t *server) {
   return err;
 }
 
-// fix for later -> this function is currently wrong I need to make a thread
-// whenever I get the funtion server_accept then every request has its own
-// thread is better then what I am doing rn also I could make the for loop to a
-// while loop and check every few seconds if the main user (you) type in exit to
-// properly close the server if I dont find another way to do it
-void *serverAcceptThreadFunc(void *arg) {
+// best thing to do for improved perfromance would be a thread pool, where we
+// have a list of waiting connection and a fix amount of threads
+//
+// first we have to create a thread queue and then we have to spawn a fix amount
+// of worker threads (4, 8, but also we can do number of our cpu cores *2)
+void *serverAccept(void *arg) {
   // comments for everything here is in the main function but commented out
   server_t *server = (server_t *)arg;
   int err = 0;
@@ -295,7 +295,7 @@ int main() {
   // then we give it NULL because we have no Thread attributes to give
   // then we give it our function and lastly we give it the parameter for the
   // function
-  pthread_create(&threadAccept, NULL, serverAcceptThreadFunc, &server);
+  pthread_create(&threadAccept, NULL, serverAccept, &server);
   // now we wait for the thread to finish (it will never finish except when it
   // closes)
   pthread_join(threadAccept, NULL);
