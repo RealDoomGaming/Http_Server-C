@@ -45,21 +45,93 @@ typedef struct jobqueue {
   int len;       // finally the number of jobs in the queue
 } jobqueue;
 
-// now the thread struct we will use
-// We use a struct and not just a thread because we can contoll it better and //
-// access it via and id
+// thrid our struct for our actual thread
 typedef struct thread {
-  int id;                   // the id for our thread
-  pthread_t pthread;        // our actual thread
-  struct thpool_ *thpool_p; // the thread pool our thread belongs too
+  int id;                  // id so we can easily identify each thread
+  pthread_t pthread;       // actual thread which will work
+  struct thpool_ *thpoolP; // the threads access to the threadpool
 } thread;
 
-// our thread pool for the thread struct later
+// our thread pool with which we will actually work
 typedef struct thpool_ {
-  thread **threads; // a pointer to the threads
-  volatile int numThreadsAlive;
-  volatile int numThreadsWorking;
-  pthread_mutex_t thcountLock;
-  pthread_cond_t threadAllIdle;
-  jobqueue jobqueue;
+  thread **threads;               // the pointer to all the threads
+  volatile int numThreadsAlive;   // the number of threads currently alive
+  volatile int numThreadsWorking; // the number of threads currently working
+  pthread_mutex_t
+      thcountLock; // this will be used for thread count and other stuff
+  pthread_cond_t threadsAllIdle; // would signal to all threads to wait with
+                                 // thpool wait func
+  jobqueue jobqueue;             // our job queue with all the jobs
 } thpool_;
+
+// now our function prototypes -> function prototypes are basically when we tell
+// the c compiler that we will later declare the functions but for now you just
+// need to know their names arguments and return types
+//
+// Why do we need them -> because C is a top to bottom language meaning it reads
+// everything in order from top to bottom and if we place the functions at the
+// top then any part of the file can call them
+
+// our funtions for working with our threads
+static int threadInit(thpool_ *thpoolP, struct thread **threadP, int id);
+static void *threadDo(struct thread *threadP);
+static void threadHold(int sigId);
+static void threadDestroy(struct thread *threadP);
+
+// our functions for working with out jobqueue
+static int jobqueueCreate(jobqueue *jobqueueP);
+static void jobqueueClear(jobqueue *jobqueueP);
+static void jobqueueInsert(jobqueue *jobqueueP, struct job *newJobP);
+static struct job *jobqueueGet(jobqueue *jobqueueP);
+static void jobqueueDestroy(jobqueue *jobqueueP);
+
+// our function for the bsem
+static void bsemCreate(struct bsem *bsemP, int value);
+static void bsemReset(struct bsem *bsemP);
+static void bsemPost(struct bsem *bsemP);
+static void bsemPostAll(struct bsem *bsemP);
+static void bsemWait(struct bsem bsemP);
+
+// our main stuff for the actual threadpool now
+
+// first we need to create/init our thread pool
+// the function only gets one parameter and that would be the num of Threads
+// we want max
+struct thpool_ *thpoolInit(int numThreads) {
+  // error variable which will be used for handeling errors late
+  int err = 0;
+
+  // if numThreads is less then 0 so -1, -2 and so on we want to set it to 0
+  if (numThreads < 0) {
+    numThreads = 0;
+  }
+
+  // now to make a new thread pool
+  thpool_ *thpoolP;
+  // we need to malloc memory to our thread pool in the size of the threadpool
+  // struct and then cast it to a threadpool pointer bc it isnt one
+  // automatically
+  thpoolP = (struct thpool_ *)malloc(sizeof(struct thpool_));
+
+  // if the threadpool is still null after allocating memory then something bad
+  // happened 100%
+  if (thpoolP == NULL) {
+    perror("allocating memory");
+    printf("There was an error allocating memory for the initializing of your "
+           "thread pool\n");
+    return NULL;
+  }
+  // after we know that no error happened when creating the threadpool
+  // we can initialize the number of threads working and alive in the struct
+  thpoolP->numThreadsAlive = 0;
+  thpoolP->numThreadsWorking = 0;
+
+  // after all that we can initialize the actual jobqueue
+  err = jobqueueCreate(&thpoolP->jobqueue);
+  if (err == -1) {
+    perror("Jobqueue creation");
+    printf("There was an error creating the jobqueue for the jobs\n");
+    free(thpoolP);
+    return NULL;
+  }
+}
