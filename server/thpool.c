@@ -213,3 +213,56 @@ void thpoolWait(thpool_ *thpoolP) {
   // all idle
   pthread_mutex_unlock(&thpoolP->thcountLock);
 }
+
+// next we have to make the destroy function for the threadpool which destroys
+// it
+void thpoolDestroy(thpool_ *thpoolP) {
+  // we dont need to destroy it if it is already NULL
+  if (thpoolP == NULL) {
+    return;
+  }
+
+  // we need a variable for all the threads which exist so we can
+  // see how many exist even after we destroyed the thpool
+  volatile int threadsTotal = thpoolP->numThreadsAlive;
+
+  // we will give our idle threads 1 second to be killed
+  double TIMEOUT = 1.0;
+  // we need this to calculate the time it takes to kill each thread
+  time_t start, end;
+  // time passed bewteen start and end
+  double tpassed = 0.0;
+  // start our start timer
+  time(&start);
+  // while the tpassed variable is lower then the TIMEOUT variable and
+  // we still have threads alive we keep killing them
+  while (tpassed < TIMEOUT && thpoolP->numThreadsAlive) {
+    // we tell all our thread with a job to stop working and lock them
+    bsemPostAll(thpoolP->jobqueue.hasJobs);
+    // get the time of the end
+    time(&end);
+    // then get the difference between the start and end
+    tpassed = difftime(start, end);
+  }
+
+  // then we need to pool the remaining threads
+  // meaning we kill the remaining threads but with no timeout so
+  // it isnt as gentle as before
+  // this is slower but more friendly to the cpu
+  while (thpoolP->numThreadsAlive) {
+    bsemPostAll(thpoolP->jobqueue.hasJobs);
+    sleep(1);
+  }
+
+  // we need to also clean up the jobqueue
+  // thankfully we have a function for that
+  jobqueueDestroy(&thpoolP->jobqueue);
+  // now at the ends we also want to deallocate all the threads
+  int n = 0;
+  for (n = 0; n < threadsTotal; n++) {
+    threadDestroy(thpoolP->threads[n]);
+  }
+  // at the end we can free our thread pool and the threads which it contains
+  free(thpoolP->threads);
+  free(thpoolP);
+}
