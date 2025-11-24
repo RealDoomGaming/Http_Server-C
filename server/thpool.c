@@ -57,6 +57,7 @@ typedef struct thpool_ {
   thread **threads;               // the pointer to all the threads
   volatile int numThreadsAlive;   // the number of threads currently alive
   volatile int numThreadsWorking; // the number of threads currently working
+  volatile int maxNumberThreads;  // the max number of threads we want
   pthread_mutex_t
       thcountLock; // this will be used for thread count and other stuff
   pthread_cond_t threadsAllIdle; // would signal to all threads to wait with
@@ -125,6 +126,7 @@ struct thpool_ *thpoolInit(int numThreads) {
   // we can initialize the number of threads working and alive in the struct
   thpoolP->numThreadsAlive = 0;
   thpoolP->numThreadsWorking = 0;
+  thpoolP->maxNumberThreads = numThreads;
 
   // after all that we can initialize the actual jobqueue
   err = jobqueueCreate(&thpoolP->jobqueue);
@@ -265,4 +267,26 @@ void thpoolDestroy(thpool_ *thpoolP) {
   // at the end we can free our thread pool and the threads which it contains
   free(thpoolP->threads);
   free(thpoolP);
+}
+
+// this function "pauses" all threads (it kills them)
+void thpoolPause(thpool_ *thpoolP) {
+  int n;
+  for (n = 0; n < thpoolP->numThreadsAlive; n++) {
+    // sends the signal to every single thread to tell them to kill themselfs
+    pthread_kill(thpoolP->threads[n]->pthread, SIGUSR1);
+  }
+}
+
+// this function resumes all the threads in the thread pool (it creates new
+// ones)
+void thpoolResume(thpool_ *thpoolP) {
+  // we get the number of threads we want to revive
+  int numberOfThreadsWeWant = thpoolP->maxNumberThreads;
+
+  int n = 0;
+  for (n = 0; n < numberOfThreadsWeWant; n++) {
+    // then we go throug that amount of threads we want to revive and init them
+    threadInit(thpoolP, &thpoolP->threads[n], n);
+  }
 }

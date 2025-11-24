@@ -49,4 +49,7 @@ void thpoolDestroy(threadpool);
 // Working threads are the threads which are currently working and no idle
 int thpoolNumThreadsWorking(threadpool);
 
+// this function will resume the "paused" threads
+void thpoolResume(threadpool);
+
 #endif
