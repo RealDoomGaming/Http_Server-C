@@ -134,4 +134,82 @@ struct thpool_ *thpoolInit(int numThreads) {
     free(thpoolP);
     return NULL;
   }
+
+  // then we also need to make the threads in the pool
+  thpoolP->threads =
+      (struct thread **)malloc(numThreads * sizeof(struct thread *));
+  // if we have an error, so meaning we couldnt malloc the memory we do our
+  // error handeling
+  if (thpoolP->threads == NULL) {
+    perror("Thread Pool creation");
+    printf("There was an error trying to malloc the memory for the threads in "
+           "our Thread Pool\n");
+    free(thpoolP);
+    return NULL;
+  }
+
+  // here we just initialize the lock and the all idle signals for our thpool
+  pthread_mutex_init(&(thpoolP->thcountLock), NULL);
+  pthread_cond_init(&thpoolP->threadsAllIdle, NULL);
+
+  // lastly we actually need to init the threads
+  int n;
+  // we go with a for loop for the amount of number of threads we give this
+  // function
+  for (n = 0; n < numThreads; n++) {
+    // init the thread with our init funtion where we give it the thpool then
+    // the thread and also the id
+    threadInit(thpoolP, &thpoolP->threads[n], n);
+  }
+
+  // but we also have to wait for all the threads to initialize
+  // meaning we wait until the amount of threads is the same as our number of
+  // threads
+  while (thpoolP->numThreadsAlive != numThreads) {
+  };
+
+  // lastly we return the initialized thpool
+  return thpoolP;
+}
+
+// now we have to make the function for the work to be added to our thpool
+int thpoolAddWork(thpool_ *thpoolP, void (*functionP)(void *), void *argP) {
+  // a pointer to our new Job
+  job *newJob;
+
+  // initialize the new job
+  newJob = (struct job *)malloc(sizeof(struct job));
+  // if something with the malloc failed then we do our error handeling
+  if (newJob == NULL) {
+    perror("Creating Job");
+    printf("There was an error allocating memor for our new job");
+    return -1;
+  }
+
+  // after that we have to assign the function and the argument
+  newJob->function = functionP;
+  newJob->arg = argP;
+
+  // lastly we have to add the job to the queue
+  jobqueueInsert(&thpoolP->jobqueue, newJob);
+
+  // after nothing went wrong we just return with 0
+  return 0;
+}
+
+// next we have to make a function which waits for all jobs to finish
+void thpoolWait(thpool_ *thpoolP) {
+  // activates the lock signal of the thread pool
+  pthread_mutex_lock(&thpoolP->thcountLock);
+
+  // while our jobqueue is bigger then 0 (true) or while our threads which are
+  // working is bigger then 0 (true) we do the wait and send the signal to lock
+  // and go idle
+  while (thpoolP->jobqueue.len || thpoolP->numThreadsWorking) {
+    pthread_cond_wait(&thpoolP->threadsAllIdle, &thpoolP->thcountLock);
+  }
+
+  // then after allat is done we dont signal to lock anymore but they are still
+  // all idle
+  pthread_mutex_unlock(&thpoolP->thcountLock);
 }
