@@ -12,6 +12,12 @@
 #include <time.h>
 #include <unistd.h>
 
+// 2 global variables
+static volatile int threadsKeepAlive; // this variable is either 0 or 1 and says
+                                      // if we should continue or worker loop
+static volatile int threadsOnHold;    // this variable tells our threads to wait
+                                      // with either being 0 or 1
+
 // here come our structs
 // Binary Semaphore
 // Acts like a tiny stop and go flag for our worker threads with
@@ -327,4 +333,77 @@ static int threadInit(thpool_ *thpoolP, struct thread **threadP, int id) {
   // finishes
   pthread_detach((*threadP)->pthread);
   return 0;
+}
+
+// we also need to make a function which makes the threads get called to go on
+// hold
+static void threadHold(int sigId) {
+  // this function basically just loops until something else changes the
+  // threadOnHold so basically just holds the threat
+  int threadOnHold = 1;
+  while (threadOnHold) {
+    sleep(1);
+  }
+}
+
+// now a function for the thread to actually do something
+// This function is an endless loop which basically does something for infinity
+// It gets errupted once the thpoolDestroy() function gets called
+// thread* threadP -> the thread which will actually do something
+static void *threadDo(struct thread *threadP) {
+  // we could give the thread a name with snprintf(...)
+  // but I wont do that because I am lazy
+  // and we would also need to use something like prctl(...)
+
+  // we make a new threadpool which is equal to the thread pool in the thread we
+  // want to do something with
+  thpool_ *thpoolP = threadP->thpoolP;
+  // this is necesarry in order to ensure that all threads have been created
+  // before we start
+
+  // we firstly need to register the signal handler for the thread
+  struct sigaction act; // creates a new sigaction struct which defines how this
+                        // thread should handle a signal
+  sigemptyset(&act.sa_mask); // sigemptyset inits the mask of the signal which
+                             // should be blocked while the handler runs
+                             // sigemptyset means that no extra signal should be
+                             // blocked during the execution of threadHold
+  act.sa_flags = SA_ONSTACK; // This tells linux to use an alternative signal
+                             // stack when its running on the handler
+  act.sa_handler = threadHold; // this sets the function which will be called
+                               // when the thread receives a SIGUSR1
+  // This if basically looks if there was an error trying to install the handler
+  // for the sigaction, the action on SIGUSR1 was calling threadDo
+  if (sigaction(SIGUSR1, &act, NULL) == -1) {
+    perror("Signal Handler");
+    printf("There was an error trying to set the sig on action\n");
+    return NULL;
+  }
+
+  // then we also need to mark the thread as alive
+  // we basically say here that we lock the access to the variable to all other
+  // threads then we increment it and then we unlock the access to the variable
+  // again We do this so no 2 threads can access it at the same time because
+  // when we create the threads they might try to access them at the same time
+  // and if 2 threads see 0 and do +1 then the final result is 1 but there are 2
+  // threads in total
+  pthread_mutex_lock(&thpoolP->thcountLock);
+  thpoolP->numThreadsWorking += 1;
+  pthread_mutex_unlock(&thpoolP->thcountLock);
+
+  // now we do the main worker loop
+  // while the threads are supposed to be alive we keep doing the thread
+  while (threadsKeepAlive) {
+    // this basically waits for a job to be free
+    // if there are no jobs -> the threads sleep
+    // else if there are -> the producer calls bsem_post and this wakes exactly
+    // 1 worker
+    bsemWait(*thpoolP->jobqueue.hasJobs);
+
+    // if we are supposed to keep doing jobs then we do them
+    // we check this again because the shutdown might happen after we just
+    // entered another loop
+    if (threadsKeepAlive) {
+    }
+  }
 }
