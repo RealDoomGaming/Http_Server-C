@@ -290,3 +290,41 @@ void thpoolResume(thpool_ *thpoolP) {
     threadInit(thpoolP, &thpoolP->threads[n], n);
   }
 }
+
+int thpoolNumThreadsWorking(thpool_ *thpoolP) {
+  return thpoolP->numThreadsWorking;
+}
+
+// now we will do all the functions referring to the threads
+
+// this function is fro creating a thread
+// we will return 0 on sucess else we return -1
+static int threadInit(thpool_ *thpoolP, struct thread **threadP, int id) {
+  // here we actually give our thread the memory it needs
+  *threadP = (struct thread *)malloc(sizeof(struct thread));
+  if (threadP == NULL) {
+    perror("Creating Thread");
+    printf("Error creating a new thread\n");
+    return -1;
+  }
+
+  // then we give it the refrence to our thread pool
+  (*threadP)->thpoolP = thpoolP;
+  // and its id
+  (*threadP)->id = id;
+
+  // after all that we create a new thread with pthread_create
+  // &(*threadP)->pthread : means that we get the actuall thread from our thread
+  // struct which is ** so we need to do the * and & (void *(*)(void *))
+  // threadDo : means that we take the threadDo function and cast it to a
+  // pointer which will point to a function which returns a void pointer and
+  // accepts the void pointer as an argument lastly as an argument for our new
+  // function we give it the *threadP
+  pthread_create(&(*threadP)->pthread, NULL, (void *(*)(void *))threadDo,
+                 *threadP);
+  // with this we tell the system that I wont join the thread using pthread_join
+  // so the system automatically cleans up the resources after the thread
+  // finishes
+  pthread_detach((*threadP)->pthread);
+  return 0;
+}
