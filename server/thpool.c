@@ -388,7 +388,7 @@ static void *threadDo(struct thread *threadP) {
   // and if 2 threads see 0 and do +1 then the final result is 1 but there are 2
   // threads in total
   pthread_mutex_lock(&thpoolP->thcountLock);
-  thpoolP->numThreadsWorking += 1;
+  thpoolP->numThreadsAlive += 1;
   pthread_mutex_unlock(&thpoolP->thcountLock);
 
   // now we do the main worker loop
@@ -404,6 +404,57 @@ static void *threadDo(struct thread *threadP) {
     // we check this again because the shutdown might happen after we just
     // entered another loop
     if (threadsKeepAlive) {
+      // basically the same stuff we did before with num threads alive
+      pthread_mutex_lock(&thpoolP->thcountLock);
+      thpoolP->numThreadsWorking += 1;
+      pthread_mutex_unlock(&thpoolP->thcountLock);
+
+      // now we need to read a job from the jobqueue
+      // the first thing we need is a function pointer (pointer to a function)
+      // with a void pointer as a parameter
+      void (*funcBuffer)(void *);
+      // we also have an argument void pointer
+      void *argBuffer;
+      // and finally we get our job from the jobqueue
+      job *jobP = jobqueueGet(&thpoolP->jobqueue);
+      // then if we have got a job
+      if (jobP) {
+        // we get our function pointer an actual value from the job
+        funcBuffer = jobP->function;
+        // and also get the argument
+        argBuffer = jobP->arg;
+        // then we call it
+        funcBuffer(argBuffer);
+        // and free the job
+        free(jobP);
+      }
+
+      // after we are done working we want to lock the num threads working again
+      pthread_mutex_lock(&thpoolP->thcountLock);
+      // and decrease it by 1
+      thpoolP->numThreadsWorking -= 1;
+      if (!thpoolP->numThreadsWorking) {
+        // now if no threads are working we just call threadAllIdle to wake up
+        // all threads so they maybe find something to work wit idk I think
+        // maybe
+        pthread_cond_signal(&thpoolP->threadsAllIdle);
+      }
+      // and we unlock the num threads working again
+      pthread_mutex_unlock(&thpoolP->thcountLock);
     }
   }
+
+  // here we just decrease the amount of alive workers because after this the
+  // thread ends and its will be gone
+  pthread_mutex_lock(&thpoolP->thcountLock);
+  thpoolP->numThreadsAlive--;
+  pthread_mutex_unlock(&thpoolP->thcountLock);
+
+  // maybe we should destroy it beforehand
+  threadDestroy(threadP);
+
+  return NULL;
 }
+
+// freeing a thread
+static void threadDestroy(thread *threadP) { free(threadP); }
