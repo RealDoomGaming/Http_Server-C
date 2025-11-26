@@ -458,3 +458,71 @@ static void *threadDo(struct thread *threadP) {
 
 // freeing a thread
 static void threadDestroy(thread *threadP) { free(threadP); }
+
+// before anything else we now are going to define all the synchronisation with
+// bsem
+
+// this is for the initialization of the semaphore to be 0 or 1
+static void bsemCreate(bsem *bsemP, int value) {
+  // first we check if the given value is even correct
+  if (value < 0 || value > 1) {
+    perror("BSEM INIT");
+    printf("There was an error initializing the bsem because the given value "
+           "was either greater then or less then 0\n");
+    exit(1);
+  }
+
+  // after the check we can just assign the mutex and condition we can get from
+  // our bsemP
+  pthread_mutex_init(&bsemP->mutex, NULL);
+  pthread_cond_init(&bsemP->cond, NULL);
+  // after all that just assign the variable and then we  are done
+  bsemP->v = value;
+}
+
+// then we have to have a function which resetst the semaphore to 0 again
+static void bsemRest(bsem *bsemP) {
+  // we basically just unassign all the values like the condition and mutex
+  // but then we also have to set the v to 0 which we just take the create
+  // function for
+  pthread_mutex_destroy(&bsemP->mutex);
+  pthread_cond_destroy(&bsemP->cond);
+  bsemCreate(bsemP, 0);
+}
+
+// another function we need is the bsem Post function -> this would post to
+// alteast one thread with post we mean that it would just signal to atleast one
+// thread
+static void bsemPost(bsem *bsemP) {
+  // we just lock all other threads to not be able to access v and then we set v
+  // to 1 and we also signal to atleast one thread with our cond variable
+  pthread_mutex_lock(&bsemP->mutex);
+  bsemP->v = 1;
+  pthread_cond_singal(&bsemP->cond);
+  pthread_mutex_unlock(&bsemP->mutex);
+}
+
+// we would also like to post to all threads and not only one
+static void bsemPostAll(bsem *bsemP) {
+  // we basically do the same like with bsemPost but instead of signaling to
+  // only 1 thread we do a broadcast which signals to all threads
+  pthread_mutex_lock(&bsemP->mutex);
+  bsemP->v = 1;
+  pthread_cond_broadcast(&bsemP->cond);
+  pthread_mutex_unlock(&bsemP->mutex);
+}
+
+// lastly for bsem functions we would need a wait
+static void bsemWait(bsem *bsemP) {
+  // here we basically just wait until the value of bsemP becomes 1 and then we
+  // break the wait loop
+  // -> pthread_cond_wait basically releases the mutex, so its technically still
+  // locked but it can be accesed by other threads and that acess is then the
+  // signal for the wait to stop
+  pthread_mutex_lock(&bsemP->mutex);
+  while (bsemP->v != 1) {
+    pthread_cond_wait(&bsemP->cond, &bsemP->mutex);
+  }
+  bsemP->v = 0;
+  pthread_mutex_unlock(&bsemP->mutex);
+}
