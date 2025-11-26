@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
@@ -97,7 +98,7 @@ static void bsemCreate(struct bsem *bsemP, int value);
 static void bsemReset(struct bsem *bsemP);
 static void bsemPost(struct bsem *bsemP);
 static void bsemPostAll(struct bsem *bsemP);
-static void bsemWait(struct bsem bsemP);
+static void bsemWait(struct bsem *bsemP);
 
 // our main stuff for the actual threadpool now
 
@@ -398,7 +399,7 @@ static void *threadDo(struct thread *threadP) {
     // if there are no jobs -> the threads sleep
     // else if there are -> the producer calls bsem_post and this wakes exactly
     // 1 worker
-    bsemWait(*thpoolP->jobqueue.hasJobs);
+    bsemWait(thpoolP->jobqueue.hasJobs);
 
     // if we are supposed to keep doing jobs then we do them
     // we check this again because the shutdown might happen after we just
@@ -481,7 +482,7 @@ static void bsemCreate(bsem *bsemP, int value) {
 }
 
 // then we have to have a function which resetst the semaphore to 0 again
-static void bsemRest(bsem *bsemP) {
+static void bsemReset(bsem *bsemP) {
   // we basically just unassign all the values like the condition and mutex
   // but then we also have to set the v to 0 which we just take the create
   // function for
@@ -498,7 +499,7 @@ static void bsemPost(bsem *bsemP) {
   // to 1 and we also signal to atleast one thread with our cond variable
   pthread_mutex_lock(&bsemP->mutex);
   bsemP->v = 1;
-  pthread_cond_singal(&bsemP->cond);
+  pthread_cond_signal(&bsemP->cond);
   pthread_mutex_unlock(&bsemP->mutex);
 }
 
@@ -525,4 +526,116 @@ static void bsemWait(bsem *bsemP) {
   }
   bsemP->v = 0;
   pthread_mutex_unlock(&bsemP->mutex);
+}
+
+// now for our final set of functions we need to do all the jobqueue functions
+
+// firstly we have to init the actual jobquere with out init function
+static int jobqueueCreate(jobqueue *jobqueueP) {
+  // firstly we have to init the length of the jobqueue nd the front and rear of
+  // our queue
+  jobqueueP->len = 0;
+  jobqueueP->rear = NULL;
+  jobqueueP->front = NULL;
+
+  // also then we have to init hte has jobs with malloc
+  jobqueueP->hasJobs = (struct bsem *)malloc(sizeof(struct bsem));
+  if (jobqueueP->hasJobs == NULL) {
+    return -1;
+  }
+
+  // after that we have to init the mutex for the jobqueue
+  pthread_mutex_init(&jobqueueP->rwmutex, NULL);
+  // also then we have to create the bsem for our job queue
+  bsemCreate(jobqueueP->hasJobs, 0);
+
+  return 0;
+}
+
+// then we also need a function for clearing the jobqueue
+static void jobqueueClear(jobqueue *jobqueueP) {
+  // here while we have a jobs in the jobqueue we free the first one
+  while (jobqueueP->len) {
+    free(jobqueueGet(jobqueueP));
+  }
+
+  // then we also set the front and rear jobs to NULL and also reset the bsem
+  // the jobqueue has and lastly set the length to 0
+  jobqueueP->front = NULL;
+  jobqueueP->rear = NULL;
+  bsemReset(jobqueueP->hasJobs);
+  jobqueueP->len = 0;
+}
+
+// and then we have to make a push function which basically pushes a new
+// allocated job to the queue
+static void jobqueueInsert(jobqueue *jobqueueP, struct job *newJob) {
+  // first we have to lock the mutex so no other thread can manipulate the
+  // jobqueue
+  pthread_mutex_lock(&jobqueueP->rwmutex);
+  // and also then we set the prev of the new job to NULL
+  newJob->prev = NULL;
+
+  switch (jobqueueP->len) {
+  // if no jobs are in the queue then we just put the fron and rear of the
+  // jobqueue to the new job
+  case 0:
+    jobqueueP->front = newJob;
+    jobqueueP->rear = newJob;
+  // else ifwe already have jobs in the queue we set the prev job of the
+  // previous rer job in the jobqueue to the new job and then set the rear job
+  // to the new job
+  default:
+    jobqueueP->rear->prev = newJob;
+    jobqueueP->rear = newJob;
+  }
+
+  // after doing all of that complicated stff we can just increase the jobqueue
+  // length in the jobqueue
+  jobqueueP->len++;
+
+  // then we post to all threads that we have a new job
+  bsemPost(jobqueueP->hasJobs);
+  pthread_mutex_unlock(&jobqueueP->rwmutex);
+}
+
+// now we have to implement a pull for the jobqueue which will pull the first
+// thing from the jobqueue
+static struct job *jobqueueGet(jobqueue *jobqueueP) {
+  // now basically just locking the jobqueue again
+  pthread_mutex_lock(&jobqueueP->rwmutex);
+  // and then getting the first job from the jobqueue
+  job *jobP = jobqueueP->front;
+
+  // but we also have to remove the first job from the jobqueue
+  switch (jobqueueP->len) {
+  // if we have a length of 0 we dont do anything but just break out of the
+  // switch
+  case 0:
+    break;
+  // then if its 1 we can just set everything else to NULL
+  case 1:
+    jobqueueP->front = NULL;
+    jobqueueP->rear = NULL;
+    jobqueueP->len = 0;
+    break;
+  // now if we have more then 1 job in the jobqueue it gets a bit more
+  // complicated
+  default:
+    jobqueueP->front = jobP->prev;
+    jobqueueP->len--;
+    // if we have more then one job we can post again so we say to all threads
+    // which might be sleeping that we still have jobs which have to be done
+    bsemPost(jobqueueP->hasJobs);
+  }
+
+  // after that we just unlock the jobqueue again;
+  pthread_mutex_unlock(&jobqueueP->rwmutex);
+  return jobP;
+}
+
+// lastly we still have to make a function for destroying the jobqueue
+static void jobqueueDestroy(jobqueue *jobqueueP) {
+  jobqueueClear(jobqueueP);
+  free(jobqueueP->hasJobs);
 }

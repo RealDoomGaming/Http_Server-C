@@ -11,6 +11,8 @@
 #include <threads.h>
 #include <unistd.h>
 
+#include "./thpool_learning/thpool.h"
+
 #define PORT 8080
 #define BACKLOG 10
 #define BUFFER 1024
@@ -264,13 +266,19 @@ void *serverAccept(void *arg) {
   server_t *server = (server_t *)arg;
   int err = 0;
 
+  threadpool thpool = thpoolInit(8);
+
   for (;;) {
-    err = server_accept(server);
+
+    printf("Adding the incoming work to the threadpool");
+    thpoolAddWork(thpool, (void *)(serverAccept), server);
+    thpoolWait(thpool);
+    /*err = server_accept(server);
 
     if (err != 0) {
       printf("Failed accepting connection\n");
       pthread_exit(NULL);
-    }
+    }*/
   }
 }
 
