@@ -88,9 +88,16 @@ node *dequeue(queue *queueP) {
   }
   // if no error then we set the new pointer to the next node of the first node
   // before we repoint the pointer we have to check if len == 1 and then remove
-  // first and last element of the queue
-  // else we do the normal stuff
-  queueP->firstE = queueP->firstE->next;
+  if (queueP->len == 1) {
+    // first and last element of the queue
+    queueP->firstE = NULL;
+    queueP->lastE = NULL;
+  } else {
+    // else we do the normmal stuff
+    queueP->firstE = queueP->firstE->next;
+  }
+
+  // however in all circumstances we have to remove 1 from the length
   queueP->len--;
 
   // if we can get it then we return it
