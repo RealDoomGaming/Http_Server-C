@@ -3,6 +3,12 @@
 #include "node.h"
 #include <stdio.h>
 
+static void copy(node *nodeP1, node *nodeP2) {
+  // this function just makes a deep copy of nodeP2 into nodeP1
+  nodeP1->data = nodeP2->data;
+  nodeP1->next = nodeP2->next;
+}
+
 queue *queueInit() {
   // this function just makes a new queue and with that also does the memory
   // allocation stuff
@@ -102,4 +108,27 @@ node *dequeue(queue *queueP) {
 
   // if we can get it then we return it
   return removed;
+}
+
+node *peek(queue *queueP) {
+  // this function just returns the first element in the queue without removing
+  // it, returning a copy is better because then the user who peeked it cant
+  // directly change it
+  if (queueP == NULL) {
+    perror("Peek");
+    printf("There was an error trying to peek the first element of the queue "
+           "because the given queue is NULL\n");
+    return NULL;
+  }
+  if (queueP->firstE == NULL) {
+    perror("Peek");
+    printf("There was an error trying to peek the first element of the queue "
+           "because he first element is NULL\n");
+    return NULL;
+  }
+
+  node *nodeCopy = (node *)malloc(sizeof(node *));
+  copy(nodeCopy, queueP->firstE);
+
+  return nodeCopy;
 }
