@@ -132,3 +132,15 @@ node *peek(queue *queueP) {
 
   return nodeCopy;
 }
+
+int queueLength(queue *queueP) {
+  // this function just returns the current length of the queue
+  if (queueP == NULL) {
+    perror("Length");
+    printf("There was an error trying to get the length of the queue because "
+           "the queue was NULL\n");
+    return -1;
+  }
+
+  return queueP->len;
+}
