@@ -25,6 +25,7 @@ queue *queueInit() {
 }
 
 int enqueue(queue *queueP, node *thingToQueue) {
+  // this is a function for enqueing new thins into the queue
   // check if thing to queue is valid and if we have a valid queueP
   if (queueP == NULL) {
     perror("Enqueue");
@@ -55,4 +56,43 @@ int enqueue(queue *queueP, node *thingToQueue) {
 
   // and lastly just return 0 if it all worked
   return 0;
+}
+
+node *dequeue(queue *queueP) {
+  // this is a function for taking the first thing from our queue
+  // firstly check if our queueP we got is valid
+  if (queueP == NULL) {
+    perror("Dequeue");
+    printf("There was an error dequeueing because the queue we got was NULL\n");
+    return NULL;
+  }
+  if (queueP->firstE == NULL) {
+    perror("Dequeue");
+    printf("There was an error dequeueing because the first element of the "
+           "queue was NULL\n");
+    return NULL;
+  }
+
+  // then if it is we can try to get the first thing out of the queue
+  // we need to get the first thing out of the queue and set the first thing
+  // after that to the thing after the first thing we pulled
+  node *removed = queueP->firstE;
+
+  // if we succesfully set a pointer to the first node then we can continue else
+  // we do error stuff
+  if (removed == NULL) {
+    perror("Dequeue");
+    printf("There was an error trying to dequeue the node because we couldnt "
+           "get the first node\n");
+    return NULL;
+  }
+  // if no error then we set the new pointer to the next node of the first node
+  // before we repoint the pointer we have to check if len == 1 and then remove
+  // first and last element of the queue
+  // else we do the normal stuff
+  queueP->firstE = queueP->firstE->next;
+  queueP->len--;
+
+  // if we can get it then we return it
+  return removed;
 }
