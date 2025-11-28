@@ -12,8 +12,8 @@ typedef struct ThreadPool {
   // allows the thread to remain idle until it is signaled to continue
   int numThreads;
   int active;
-  queue *threadQueue;
-  pthread_t *pool;
+  queue *jobQueue;
+  pthread_t **pool;
   pthread_mutex_t mutex;
   pthread_cond_t signal;
 } threadPool;
