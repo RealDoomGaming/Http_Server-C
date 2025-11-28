@@ -6,6 +6,8 @@
 #include "../DataStructures/queue.h"
 #include "thpool.h"
 
+void *threadWork(void *arg);
+
 int addJob(threadPool *thpool, threadJob *job) {
   // in this function we basically just want to check if both parameters are
   // valid and then add the job to the queue of the thread pool but we need a
@@ -69,7 +71,7 @@ threadPool *threadPoolInit(int numThreads) {
 
   // after we know that we have a valid amount of threads we want to create we
   // can actually create the thread pool
-  threadPool *thpool = (threadPool *)malloc(sizeof(threadPool *));
+  threadPool *thpool = (threadPool *)malloc(sizeof(threadPool));
   // then we have to check if allocating the memory worked
   if (thpool == NULL) {
     perror("ThreadPool Init");
@@ -105,10 +107,10 @@ threadPool *threadPoolInit(int numThreads) {
   // we need to make a for loop so we can init all threads
   int i;
   for (i = 0; i < numThreads; i++) {
-    // then we make a new thread for the amount of threads
-    pthread_t *newThread = (pthread_t *)malloc(sizeof(pthread_t));
-    // then assign in to our array of threads we made
-    threadArray[i] = newThread;
+    // we just make a new thread with this function which we get from the
+    // pthread library and then we can just create a thread and lo give it the
+    // function plus argument
+    pthread_create(threadArray[i], NULL, threadWork, thpool);
   }
   // lastly we just assign the thread array to the thread array of our thread
   // pool
@@ -136,4 +138,54 @@ threadJob *threadJobInit(void *(*job)(void *), void *arg) {
 
   // and then we return it
   return newThreadJob;
+}
+
+void *threadWork(void *arg) {
+  threadPool *thpool = (threadPool *)arg;
+  while (thpool->active) {
+    // we protect our job queue from all threads taking something at the same
+    // time with the mutex lock
+    pthread_mutex_lock(&thpool->mutex);
+    // and then we wait until a job gets added and we get a signal
+    pthread_cond_wait(&thpool->signal, &thpool->mutex);
+
+    // then we peek the first thing from the queue in order to know that
+    // something is even there
+    node *peekNode = peek(thpool->jobQueue);
+    // we have to check if the Node we peeked is Null and if the data in that
+    // peeked Node is null else we can continue
+    if (peekNode == NULL) {
+      perror("Thread Work");
+      printf("There was an error getting the first node from the job queue, it "
+             "was NULL\n");
+      return NULL;
+    }
+
+    if (peekNode->data == NULL) {
+      perror("Thread Work");
+      printf("There was an error getting the first node from the job queue, "
+             "because the data in it was NULL\n");
+      return NULL;
+    }
+
+    // if everything was sucesfull then we need to just pop it and we also have
+    // to free the poped Node at some point
+    node *dequeuedNode = dequeue(thpool->jobQueue);
+    // we get the data we want from our dequeued node because in that is the
+    // actual job we want with our things
+    threadJob *job = (threadJob *)dequeuedNode->data;
+    free(dequeuedNode);
+
+    // then we can finally unlock the queue again because we already took our
+    // job out of the queue
+    pthread_mutex_unlock(&thpool->mutex);
+
+    // then we activate the function which is in the job we just got
+    job->job(job->arg);
+
+    // then at last we have to finally free our job so we avoid memory leaks
+    free(job);
+  }
+
+  return NULL;
 }
