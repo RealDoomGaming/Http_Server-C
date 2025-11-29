@@ -26,6 +26,7 @@ typedef struct ThreadJob {
   void *arg;
 } threadJob;
 
+int addJob(threadPool *thpool, threadJob *thjob);
 threadPool *threadPoolInit(int numThreads);
 threadJob *threadJobInit(void *(*job)(void *), void *arg);
 

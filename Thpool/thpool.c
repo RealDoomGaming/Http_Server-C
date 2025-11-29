@@ -168,6 +168,8 @@ void *threadWork(void *arg) {
       return NULL;
     }
 
+    free(peekNode);
+
     // if everything was sucesfull then we need to just pop it and we also have
     // to free the poped Node at some point
     node *dequeuedNode = dequeue(thpool->jobQueue);

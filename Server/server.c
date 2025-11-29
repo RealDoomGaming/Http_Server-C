@@ -11,7 +11,7 @@
 #include <threads.h>
 #include <unistd.h>
 
-#include "./thpool_learning/thpool.h"
+#include "../Thpool/thpool.h"
 
 #define PORT 8080
 #define BACKLOG 10
@@ -239,7 +239,7 @@ int server_accept(server_t *server) {
   shutdown(conn_fd, SHUT_RDWR);
 
   // then we have a small delay to ensure the data actually reaches the client
-  usleep(100000);
+  sleep(100000);
 
   // then we close the connection with conn_fd and if any error happened then
   // do error stuff
@@ -256,32 +256,6 @@ int server_accept(server_t *server) {
   return err;
 }
 
-// best thing to do for improved perfromance would be a thread pool, where we
-// have a list of waiting connection and a fix amount of threads
-//
-// first we have to create a thread queue and then we have to spawn a fix amount
-// of worker threads (4, 8, but also we can do number of our cpu cores *2)
-void *serverAccept(void *arg) {
-  // comments for everything here is in the main function but commented out
-  server_t *server = (server_t *)arg;
-  int err = 0;
-
-  threadpool thpool = thpoolInit(8);
-
-  for (;;) {
-
-    printf("Adding the incoming work to the threadpool");
-    thpoolAddWork(thpool, (void *)(serverAccept), server);
-    thpoolWait(thpool);
-    /*err = server_accept(server);
-
-    if (err != 0) {
-      printf("Failed accepting connection\n");
-      pthread_exit(NULL);
-    }*/
-  }
-}
-
 int main() {
   // main method
   int err = 0;           // error variable
@@ -295,24 +269,21 @@ int main() {
     return err;
   }
 
-  // for better perfromance when multiple clients connect we use multiple
-  // threads Create Thread T for later here:
-  pthread_t threadAccept;
-  // here we actually create the thread and it runs automatically:
-  // first we give it our thread t we created before
-  // then we give it NULL because we have no Thread attributes to give
-  // then we give it our function and lastly we give it the parameter for the
-  // function
-  pthread_create(&threadAccept, NULL, serverAccept, &server);
-  // now we wait for the thread to finish (it will never finish except when it
-  // closes)
-  pthread_join(threadAccept, NULL);
+  // for better peformance we also make a thread pool
+  threadPool *thpool = threadPoolInit(8);
 
-  /*
   // if no error then enter and infinite loop
   for (;;) {
     // where we try to accept incoming connections
-    err = server_accept(&server);
+    // we then make a new thread job with the server_accept function
+    // this makes one job for each request which the threads then pick up and
+    // work on
+    threadJob *thjob = threadJobInit((void *)(server_accept), (void *)&server);
+    // after that we also need to add it to the thread pool which happens in the
+    // add Job function
+    err = addJob(thpool, thjob);
+    // so we dont need the server accept thing anymore
+    // err = server_accept(&server);
     // else if there is an error while accepting we return out of the inifite
     // loop and the programm closes
     if (err != 0) {
@@ -320,7 +291,6 @@ int main() {
       return err;
     }
   }
-  */
 
   return 0;
 }
