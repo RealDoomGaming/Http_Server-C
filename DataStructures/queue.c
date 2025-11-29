@@ -127,7 +127,7 @@ node *peek(queue *queueP) {
     return NULL;
   }
 
-  node *nodeCopy = (node *)malloc(sizeof(node *));
+  node *nodeCopy = (node *)malloc(sizeof(node));
   copy(nodeCopy, queueP->firstE);
 
   return nodeCopy;

@@ -1,3 +1,4 @@
+#include <bits/pthreadtypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,9 +108,11 @@ threadPool *threadPoolInit(int numThreads) {
   // we need to make a for loop so we can init all threads
   int i;
   for (i = 0; i < numThreads; i++) {
-    // we just make a new thread with this function which we get from the
-    // pthread library and then we can just create a thread and lo give it the
-    // function plus argument
+    // first we have to actually make a pointer there which is going to point to
+    // the thread else when we try to init the pthread with create we get a
+    // segemtation fault because thread Array with index i is just a pointer
+    // with nothing else
+    threadArray[i] = (pthread_t *)malloc(sizeof(pthread_t));
     pthread_create(threadArray[i], NULL, threadWork, thpool);
   }
   // lastly we just assign the thread array to the thread array of our thread

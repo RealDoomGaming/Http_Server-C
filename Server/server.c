@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -94,7 +95,7 @@ char *getMethod(int conn_fd) {
   printf("%lu", strlen(buffer));
   // then we enter our while where we check if the bool is false and then check
   // if our idx is smaller then the length of the buffer
-  while (!foundFirstSpace && idx < strlen(buffer)) {
+  while (!foundFirstSpace && idx < (int)strlen(buffer)) {
     // then we copy the character from the buffer into our method
     method[idx] = buffer[idx];
     printf("character at idx: %d %c\n", idx, buffer[idx]);
@@ -173,6 +174,9 @@ int server_listen(server_t *server) {
   return err;
 }
 
+// server accept function is only to accept the actuall connection the other
+// stuff like sending the http things and getting the method happens later in a
+// seperate function
 int server_accept(server_t *server) {
   // err variable and the connection file descripton
   int err = 0;
@@ -201,65 +205,73 @@ int server_accept(server_t *server) {
   // else we print Client Connected bc we connected succesfully
   printf("Client connected!\n");
 
-  // reading client data
+  return conn_fd;
+}
+
+// this connection now is to handle all the stuff we send to the client and also
+// where we get the method
+void *handle_client(void *arg) {
+  int conn_fd = *(int *)arg;
+  // after getting our cnnectioon file descriptor we can free the argument
+  free(arg);
+
+  // for our errors we make a new variable
+  int err;
+
+  // firstly we have to get the method from our client
   char *method = getMethod(conn_fd);
 
-  // after reading client data we check if we had an error and then
-  // do our usual error handeling stuff
   if (method == NULL) {
-    perror("method");
-    printf("failed to get the method from the client");
-    return -1;
+    perror("Getting Connection");
+    printf("There was an error handeling the client stuff because we couldnt "
+           "get the method\n");
+    // before we return we also have to close the connection properly
+    close(conn_fd);
+    return NULL;
   }
 
-  // for testing purposes we also print the method we find
-  printf("Found Method: %s\n", method);
+  printf("Found method: %s\n", method);
 
-  // after finding the method the client gave us we could use that to give a
-  // response back instead of always giving it a simple text
-
-  // if we have the method GET we do the normal stuff where we send a plain text
-  if (strcmp(method, "GET")) {
+  // then we handle the specific method we get (currently only GET)
+  if (strcmp(method, "GET") == 0) {
+    // and also send the plain text to the client
     err = sendPlainText(conn_fd);
   }
 
-  // after doing the specific method the client requested we can see if we got
-  // an error and then do our usual error handeling stuff
-  if (err == -1) {
-    perror("client");
-    printf("failed to do the method the client requested\n");
-    return err;
+  // after that we can free our method
+  free(method);
+
+  // here we dont need to return since only the client wont receive the thing we
+  // send so its fine
+  if (err < 0) {
+    perror("Getting Method");
+    printf("There was an error getting the clients method\n");
   }
 
-  // before we close the socket we want to ensure that the data has atually send
-  // and we also want to tell the client that we are going to close with
-  // shutdown for shutdown we give it the fd of the client and the Shut_RDWR
-  // which tells the shutdown function to close both the reading and writing
-  // side of the socket connection
+  // then after all that we have to shutdown the conneciton
   shutdown(conn_fd, SHUT_RDWR);
+  // then we wait 2 seconds so the client can actually shutdown
+  sleep(2);
 
-  // then we have a small delay to ensure the data actually reaches the client
-  sleep(100000);
-
-  // then we close the connection with conn_fd and if any error happened then
-  // do error stuff
+  // then lastly we close the conneciton
   err = close(conn_fd);
-  if (err == -1) {
-    perror("close");
-    printf("failed to close connection\n");
-    return err;
+  if (err < 0) {
+    perror("Closing Connection");
+    printf("There was an error closing the connection with the client\n");
+    // we also dont need to return here since the programm is almost done
   }
 
-  // For testing purposes we print this
-  printf("Client Connection Close\n");
-
-  return err;
+  printf("Client Connection Closed\n");
+  return NULL;
 }
 
 int main() {
   // main method
   int err = 0;           // error variable
   server_t server = {0}; // init the server struct
+
+  // for better performance we also make a thread pool
+  threadPool *thpool = threadPoolInit(8);
 
   // listen for a connection
   err = server_listen(&server);
@@ -269,27 +281,26 @@ int main() {
     return err;
   }
 
-  // for better peformance we also make a thread pool
-  threadPool *thpool = threadPoolInit(8);
-
   // if no error then enter and infinite loop
   for (;;) {
-    // where we try to accept incoming connections
-    // we then make a new thread job with the server_accept function
-    // this makes one job for each request which the threads then pick up and
-    // work on
-    threadJob *thjob = threadJobInit((void *)(server_accept), (void *)&server);
-    // after that we also need to add it to the thread pool which happens in the
-    // add Job function
-    err = addJob(thpool, thjob);
-    // so we dont need the server accept thing anymore
-    // err = server_accept(&server);
-    // else if there is an error while accepting we return out of the inifite
-    // loop and the programm closes
-    if (err != 0) {
-      printf("Failed accepting connection\n");
-      return err;
+    // first we have to accept the client connection and get the client file
+    // descriptor
+    int client_fd = server_accept(&server);
+    if (client_fd < 0) {
+      perror("Accepting");
+      printf("There was an error accepting the connection\n");
+      // despite the error we can just continue to get other connections no need
+      // to shutdown the entire server
+      continue;
     }
+
+    // then allocate the memory for the client_fd
+    int *conn_fd_ptr = (int *)malloc(sizeof(int));
+    *conn_fd_ptr = client_fd;
+
+    // after that we do all the job stuff with our threads
+    threadJob *job = threadJobInit(handle_client, conn_fd_ptr);
+    addJob(thpool, job);
   }
 
   return 0;
