@@ -27,6 +27,7 @@ typedef struct server {
 int sendPlainText(int conn_fd) {
   // making a new error variable to store errors
   int err;
+  printf("Writing to fd: %d\n", conn_fd);
 
   // now we need to send something with write
   // in the content needs to be the protocoll, the status code
@@ -35,7 +36,7 @@ int sendPlainText(int conn_fd) {
   char *content = "HTTP/1.1 200 OK\r\n"
                   "Content-Type: text/html\n"
                   "\r\n"
-                  "Jukulumbrien";
+                  "Jukulumbrien\r\n";
 
   // size of our content
   size_t contentSize = strlen(content);
@@ -85,7 +86,7 @@ char *getMethod(int conn_fd) {
   // then we malloc the method
   char *method = malloc(bufferMethodsize);
   // we also need to give it a null determinator at the last idx of the method
-  method[7] = 0;
+  memset(method, 0, bufferMethodsize);
 
   // then we do the entire logic for finding the method
   // first we make a bool for if we have found the method
@@ -97,12 +98,15 @@ char *getMethod(int conn_fd) {
   // if our idx is smaller then the length of the buffer
   while (!foundFirstSpace && idx < (int)strlen(buffer)) {
     // then we copy the character from the buffer into our method
-    method[idx] = buffer[idx];
-    printf("character at idx: %d %c\n", idx, buffer[idx]);
     // and after that check if our current char is a space
     if (buffer[idx] == ' ') {
       foundFirstSpace = true;
+      // we need to break here because else we would continue and save the space
+      // in our method which we dont want
+      break;
     }
+    method[idx] = buffer[idx];
+    printf("character at idx: %d %c\n", idx, buffer[idx]);
     // lastly we make our idx + 1 and then we are done with everything
     idx++;
   }
@@ -236,17 +240,18 @@ void *handle_client(void *arg) {
   if (strcmp(method, "GET") == 0) {
     // and also send the plain text to the client
     err = sendPlainText(conn_fd);
+    printf("sendPlainText returned %d\n", err);
+
+    // here we dont need to return since only the client wont receive the thing
+    // we send so its fine
+    if (err < 0) {
+      perror("Getting Method");
+      printf("There was an error getting the clients method\n");
+    }
   }
 
   // after that we can free our method
   free(method);
-
-  // here we dont need to return since only the client wont receive the thing we
-  // send so its fine
-  if (err < 0) {
-    perror("Getting Method");
-    printf("There was an error getting the clients method\n");
-  }
 
   // then after all that we have to shutdown the conneciton
   shutdown(conn_fd, SHUT_RDWR);

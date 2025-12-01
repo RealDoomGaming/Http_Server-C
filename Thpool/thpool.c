@@ -1,4 +1,4 @@
-#include <bits/pthreadtypes.h>
+#include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,7 +54,10 @@ int addJob(threadPool *thpool, threadJob *job) {
 
   // after all that we need to send a signal with our cond signal from our
   // thread pool to signal one of our threads to awaken and start working
+  pthread_mutex_lock(&thpool->mutex);
+  thpool->signal_set = 1;
   pthread_cond_signal(&thpool->signal);
+  pthread_mutex_unlock(&thpool->mutex);
 
   // at the end if everything went well we just return 0
   return 0;
@@ -73,6 +76,7 @@ threadPool *threadPoolInit(int numThreads) {
   // after we know that we have a valid amount of threads we want to create we
   // can actually create the thread pool
   threadPool *thpool = (threadPool *)malloc(sizeof(threadPool));
+  thpool->signal_set = 0;
   // then we have to check if allocating the memory worked
   if (thpool == NULL) {
     perror("ThreadPool Init");
@@ -113,6 +117,7 @@ threadPool *threadPoolInit(int numThreads) {
     // segemtation fault because thread Array with index i is just a pointer
     // with nothing else
     threadArray[i] = (pthread_t *)malloc(sizeof(pthread_t));
+    assert(threadArray[i]);
     pthread_create(threadArray[i], NULL, threadWork, thpool);
   }
   // lastly we just assign the thread array to the thread array of our thread
@@ -150,7 +155,9 @@ void *threadWork(void *arg) {
     // time with the mutex lock
     pthread_mutex_lock(&thpool->mutex);
     // and then we wait until a job gets added and we get a signal
-    pthread_cond_wait(&thpool->signal, &thpool->mutex);
+    while (thpool->signal_set == 0)
+      pthread_cond_wait(&thpool->signal, &thpool->mutex);
+    thpool->signal_set = 0;
 
     // then we peek the first thing from the queue in order to know that
     // something is even there

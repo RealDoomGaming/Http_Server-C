@@ -16,6 +16,7 @@ typedef struct ThreadPool {
   pthread_t **pool;
   pthread_mutex_t mutex;
   pthread_cond_t signal;
+  int signal_set;
 } threadPool;
 
 typedef struct ThreadJob {
